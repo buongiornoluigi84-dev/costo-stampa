@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Costo stampa</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2B2440">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bed:#E7E8EC; --panel:#FFFFFF; --ink:#23202B; --muted:#6C6878; --line:#D3D2DA;
+  --uv:#5B3FC4; --uv-soft:#ECE7FB; --ok:#1F8A5B; --err:#C0392B;
+  --c:#00A3E0; --m:#E4007C; --y:#FFD100; --k:#1C1A1F; --w:#FFFFFF; --g:#C9C4D6;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0}
+body{background:var(--bed);color:var(--ink);font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px 48px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 2px 14px}
+h1{font-stretch:78%;font-weight:800;font-size:1.65rem;letter-spacing:-.01em;margin:0;line-height:1.1}
+.ver{font-size:.8rem;color:var(--muted)}
+.sync{font-size:.8rem;color:var(--muted);text-align:right}
+.sync.ok{color:var(--ok)} .sync.err{color:var(--err)}
+
+/* risultato principale */
+.hero{background:var(--ink);color:#fff;border-radius:18px;padding:20px 20px 16px;margin-bottom:14px}
+.hero .big{font-stretch:75%;font-weight:800;font-size:3.2rem;line-height:1;font-variant-numeric:tabular-nums}
+.hero .sub{color:#BDB8CC;font-size:.9rem;margin-top:4px}
+.stack{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:16px 0 14px;background:#3A3547}
+.stack span{display:block;height:100%;transition:width .25s}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stats div{font-size:.78rem;color:#BDB8CC}
+.stats b{display:block;color:#fff;font-size:1.1rem;font-weight:700;font-variant-numeric:tabular-nums}
+
+section{background:var(--panel);border-radius:14px;padding:16px;margin-bottom:12px}
+h2{font-size:1.05rem;font-weight:700;margin:0 0 4px}
+.hint{font-size:.85rem;color:var(--muted);margin:0 0 12px}
+
+.row{display:grid;grid-template-columns:14px 1fr 120px;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.dot{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.18)}
+.row label{font-size:.95rem}
+.field{display:flex;align-items:center;border:1px solid var(--line);border-radius:9px;background:#FAFAFC;padding:0 10px}
+.field:focus-within{border-color:var(--uv);box-shadow:0 0 0 3px var(--uv-soft)}
+.field input{border:0;background:transparent;font:inherit;font-variant-numeric:tabular-nums;width:100%;padding:9px 0;text-align:right;color:var(--ink);outline:none;min-width:0}
+.field small{color:var(--muted);font-size:.85rem;white-space:nowrap;padding-left:6px}
+.field small.pre{padding:0 6px 0 0}
+.total{display:flex;justify-content:space-between;padding-top:10px;margin-top:4px;border-top:2px solid var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pair label,.single label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:4px}
+.out{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.out div{background:var(--uv-soft);border-radius:10px;padding:10px 12px;font-size:.8rem;color:var(--muted)}
+.out b{display:block;font-size:1.25rem;color:var(--ink);font-variant-numeric:tabular-nums}
+
+details summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-weight:700}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"+";font-size:1.4rem;font-weight:400;color:var(--muted)}
+details[open] summary::after{content:"−"}
+details[open] summary{margin-bottom:10px}
+.stack-gap>*+*{margin-top:12px}
+
+.btn{font:inherit;font-weight:600;border:0;border-radius:9px;padding:10px 14px;cursor:pointer;background:var(--uv);color:#fff}
+.btn.ghost{background:var(--uv-soft);color:var(--uv)}
+.btn:focus-visible,.switch input:focus-visible+span{outline:3px solid var(--uv);outline-offset:2px}
+.inline{display:flex;gap:8px;align-items:end}
+.inline .field{flex:1}
+
+.switch{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch span{width:46px;height:28px;border-radius:14px;background:var(--line);position:relative;flex:none;transition:background .2s}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked+span{background:var(--uv)}
+.switch input:checked+span::after{transform:translateX(18px)}
+.maint-body{margin-top:12px}
+[hidden]{display:none!important}
+
+/* PIN */
+#lock{position:fixed;inset:0;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;z-index:10}
+#lock form{text-align:center;width:min(300px,86vw)}
+#lock input{width:100%;font:inherit;font-size:1.8rem;letter-spacing:.4em;text-align:center;padding:12px;border-radius:12px;border:0;margin:14px 0}
+#lock p{color:#BDB8CC;margin:0;min-height:1.4em}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* v2: home e modalità */
+.home{display:grid;gap:12px;margin-top:6px}
+.mode-card{display:flex;align-items:center;gap:14px;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--panel);border:0;border-radius:16px;padding:18px 16px;cursor:pointer}
+.mode-card:focus-visible{outline:3px solid var(--uv);outline-offset:2px}
+.mode-card .ico{flex:none;width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:800;font-stretch:75%;font-size:1.05rem;color:#fff}
+.mode-card b{display:block;font-size:1.15rem}
+.mode-card span.d{font-size:.85rem;color:var(--muted)}
+.ico.uv{background:var(--uv)} .ico.p3{background:#1F8A5B} .ico.mix{background:linear-gradient(135deg,#1F8A5B 50%,var(--uv) 50%)}
+.back{font:inherit;font-weight:600;background:transparent;border:0;color:var(--uv);cursor:pointer;padding:4px 0;margin-bottom:6px}
+.frow{display:grid;grid-template-columns:1fr 110px 36px;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
+.frow:first-child{border-top:0}
+.frow select,.fset input.name{font:inherit;border:1px solid var(--line);border-radius:9px;background:#FAFAFC;padding:9px 8px;width:100%;min-width:0;color:var(--ink)}
+.fset{display:grid;grid-template-columns:1fr 1fr 36px;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.fset input.name{grid-column:1/-1}
+.fset:first-child{border-top:0}
+.del{font:inherit;font-size:1.2rem;border:0;background:transparent;color:var(--muted);cursor:pointer;width:36px;height:36px;border-radius:8px}
+.del:hover{background:var(--uv-soft)}
+.add{margin-top:10px;width:100%}
+.stats.three{grid-template-columns:repeat(3,1fr)}
+</style>
+</head>
+<body>
+
+<div id="lock" hidden>
+  <form id="lockForm">
+    <h1>Costo stampa</h1>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">
+    <button class="btn" type="submit" style="width:100%">Entra</button>
+    <p id="lockMsg"></p>
+  </form>
+</div>
+
+<div class="wrap">
+  <header>
+    <div><h1 id="title">Costo stampa</h1><span class="ver" id="ver"></span></div>
+    <div class="sync" id="sync">Solo locale</div>
+  </header>
+
+  <!-- HOME -->
+  <div id="homeView" class="home">
+    <button class="mode-card" data-go="3d" type="button"><span class="ico p3">3D</span><span><b>3D printing</b><span class="d">Filamento + elettricità</span></span></button>
+    <button class="mode-card" data-go="uv" type="button"><span class="ico uv">UV</span><span><b>UV printing</b><span class="d">Inchiostro + elettricità</span></span></button>
+    <button class="mode-card" data-go="mix" type="button"><span class="ico mix" style="font-size:.85rem;line-height:1;text-align:center">3D<br>UV</span><span><b>3D &amp; UV printing</b><span class="d">Filamento + inchiostro + elettricità</span></span></button>
+  </div>
+
+  <!-- CALCOLATORE -->
+  <div id="calcView" hidden>
+    <button class="back" id="backBtn" type="button">← Home</button>
+
+    <div class="hero" aria-live="polite">
+      <div class="big" id="rTotal">--</div>
+      <div class="sub" id="rTotalSub">per stampa</div>
+      <div class="stack" id="stack"></div>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <!-- 3D: filamento -->
+    <section class="m3d">
+      <h2>Filamento usato</h2>
+      <p class="hint">Inserisci i grammi che lo slicer ti indica per ogni filamento.</p>
+      <div id="filRows"></div>
+      <button class="btn ghost add" id="addFil" type="button">+ Aggiungi filamento</button>
+      <div class="total"><span>Totale</span><span id="filTot">0 g</span></div>
+    </section>
+
+    <section class="m3d">
+      <h2 id="t3dTitle">Tempo stimato</h2>
+      <p class="hint">Il tempo che ti indica lo slicer per la stampa 3D.</p>
+      <div class="pair">
+        <div class="field"><input id="t3H" type="number" min="0" step="1" inputmode="numeric"><small>ore</small></div>
+        <div class="field"><input id="t3M" type="number" min="0" step="1" inputmode="numeric"><small>min</small></div>
+      </div>
+      <div class="out">
+        <div><b id="rElec3">--</b>costo elettricità</div>
+        <div><b id="rKwh3">--</b>energia usata</div>
+      </div>
+    </section>
+
+    <!-- UV: inchiostro -->
+    <section class="muv">
+      <h2>Inchiostro usato per stampa</h2>
+      <p class="hint">Inserisci i ml che il software del printer ti indica per ogni colore.</p>
+      <div id="usageRows"></div>
+      <div class="total"><span>Totale</span><span id="usageTot">0 ml</span></div>
+    </section>
+
+    <section class="muv">
+      <h2 id="tuvTitle">Tempo stimato</h2>
+      <p class="hint">Il tempo che ti indica lo slicer per la stampa UV.</p>
+      <div class="pair">
+        <div class="field"><input id="tH" type="number" min="0" step="1" inputmode="numeric"><small>ore</small></div>
+        <div class="field"><input id="tM" type="number" min="0" step="1" inputmode="numeric"><small>min</small></div>
+      </div>
+      <div class="out">
+        <div><b id="rElec">--</b>costo elettricità</div>
+        <div><b id="rKwh">--</b>energia usata</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Pezzi per foglio</h2>
+      <p class="hint">Quanti oggetti stampi in un colpo solo.</p>
+      <div class="single"><div class="field"><input id="items" type="number" min="1" step="1" value="1"><small>pezzi</small></div></div>
+      <div class="out">
+        <div><b id="rItem">--</b>costo per pezzo</div>
+        <div><b id="rItemQty">--</b><span id="rItemQtyLbl">per pezzo</span></div>
+      </div>
+    </section>
+
+    <!-- impostazioni filamenti -->
+    <section class="m3d">
+      <details id="filDetails">
+        <summary>Filamenti</summary>
+        <div class="stack-gap">
+          <p class="hint" style="margin:0">Le tue bobine: per ognuna nome, prezzo pagato e peso del filamento (di solito 1000 g).</p>
+          <div>
+            <div id="filSetRows"></div>
+            <button class="btn ghost add" id="addFilSet" type="button">+ Aggiungi bobina</button>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- impostazioni inchiostro -->
+    <section class="muv">
+      <details id="setDetails">
+        <summary>Prezzi e cartucce</summary>
+        <div class="stack-gap">
+          <p class="hint" style="margin:0">Metti quanto hai pagato davvero. Lo spreco copre pulizie e spurghi: se i costi reali risultano più alti, aumentalo.</p>
+          <div class="pair">
+            <div><label for="currency">Valuta</label><div class="field"><input id="currency" type="text" maxlength="3" style="text-align:left"></div></div>
+            <div><label for="wastage">Spreco (pulizie, spurghi)</label><div class="field"><input id="wastage" type="number" min="0" max="50" step="1"><small>%</small></div></div>
+          </div>
+          <div class="single"><label for="inkMl">ml utilizzabili per cartuccia</label><div class="field"><input id="inkMl" type="number" min="1" step="1"><small>ml</small></div></div>
+          <div>
+            <label for="globalPrice" style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px">Stesso prezzo per tutte</label>
+            <div class="inline"><div class="field"><small class="pre cur">£</small><input id="globalPrice" class="dec" type="text" inputmode="numeric" autocomplete="off"></div><button class="btn ghost" id="applyAll" type="button">Applica a tutte</button></div>
+          </div>
+          <div id="priceRows"></div>
+        </div>
+      </details>
+    </section>
+
+    <!-- impostazioni elettricità -->
+    <section>
+      <details id="elecDetails">
+        <summary>Elettricità</summary>
+        <div class="stack-gap">
+          <p class="hint" style="margin:0">Costo elettricità = potenza (W) ÷ 1000 × ore di stampa × tariffa per kWh.</p>
+          <div class="single"><label for="kwhPrice">Tariffa</label><div class="field"><small class="pre cur">£</small><input id="kwhPrice" class="dec" type="text" inputmode="numeric" autocomplete="off"><small>/ kWh</small></div></div>
+          <div class="pair">
+            <div class="m3d"><label for="watt3d">Potenza stampante 3D</label><div class="field"><input id="watt3d" type="number" min="0" step="1" inputmode="numeric"><small>W</small></div></div>
+            <div class="muv"><label for="watt">Potenza stampante UV</label><div class="field"><input id="watt" type="number" min="0" step="1" inputmode="numeric"><small>W</small></div></div>
+          </div>
+          <p class="hint" style="margin:0">3D: 150 W è la media che hai misurato con la smart plug. UV: 66 W è il massimo dichiarato della E1.</p>
+        </div>
+      </details>
+    </section>
+  </div>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const APP_VERSION = 'v2.01';
+const API_URL = ''; // <-- incolla qui l'URL /exec della distribuzione Apps Script
+
+const INKS = [
+  {id:'C', name:'Ciano',   color:'var(--c)'},
+  {id:'M', name:'Magenta', color:'var(--m)'},
+  {id:'Y', name:'Giallo',  color:'var(--y)'},
+  {id:'K', name:'Nero',    color:'var(--k)'},
+  {id:'W', name:'Bianco',  color:'var(--w)'},
+  {id:'G', name:'Gloss',   color:'var(--g)'}
+];
+const MODES = {
+  '3d': {title:'3D printing'},
+  'uv': {title:'UV printing'},
+  'mix':{title:'3D & UV printing'}
+};
+
+const DEFAULTS = {
+  currency:'£', wastage:5, inkMl:'', kwhPrice:'0.32', watt:66, watt3d:150,
+  price:{C:'',M:'',Y:'',K:'',W:'',G:''},
+  fil:[{id:'f1', name:'PLA', price:'', weight:1000}]
+};
+const LS_SET = 'inkcalc_settings', LS_PIN = 'inkcalc_pin';
+
+let S = structuredClone(DEFAULTS);
+let mode = null;
+const usage = {C:'',M:'',Y:'',K:'',W:'',G:''}; // non salvato: cambia a ogni lavoro
+let filUse = [];                                 // non salvato: [{fid, g}]
+const $ = id => document.getElementById(id);
+const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ===== DECIMALI AUTOMATICI: 125 -> 1.25, 13 -> 0.13 ===== */
+function decFormat(v){ const n = parseFloat(v); return isFinite(n) && n > 0 ? n.toFixed(2) : ''; }
+function decInput(el){
+  const d = el.value.replace(/\D/g,'').replace(/^0+/,'');
+  el.value = d ? (parseInt(d,10)/100).toFixed(2) : '';
+  return el.value;
+}
+document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('dec')) decInput(e.target); }, true);
+
+/* ================= UI BUILD ================= */
+function fieldHTML(id, unit, pre){
+  return `<div class="field">${pre?'<small class="pre cur">'+esc(S.currency)+'</small>':''}<input id="${id}" class="dec" type="text" inputmode="numeric" autocomplete="off">${unit?'<small>'+unit+'</small>':''}</div>`;
+}
+function buildRows(){
+  $('usageRows').innerHTML = INKS.map(i =>
+    `<div class="row"><span class="dot" style="background:${i.color}"></span><label for="u_${i.id}">${i.name}</label>${fieldHTML('u_'+i.id,'ml')}</div>`).join('');
+  $('priceRows').innerHTML = INKS.map(i =>
+    `<div class="row"><span class="dot" style="background:${i.color}"></span><label for="p_${i.id}">${i.name}</label>${fieldHTML('p_'+i.id,'',true)}</div>`).join('');
+  INKS.forEach(i => $('u_'+i.id).addEventListener('input', e => { usage[i.id] = e.target.value; calc(); }));
+  INKS.forEach(i => $('p_'+i.id).addEventListener('input', e => { S.price[i.id] = e.target.value; changed(); }));
+}
+
+/* --- filamenti: impostazioni (bobine) --- */
+function buildFilSet(){
+  $('filSetRows').innerHTML = S.fil.map((f,ix) => `
+    <div class="fset" data-ix="${ix}">
+      <input class="name" data-k="name" type="text" value="${esc(f.name)}" aria-label="Nome filamento">
+      <div class="field"><small class="pre cur">${esc(S.currency)}</small><input data-k="price" class="dec" type="text" inputmode="numeric" autocomplete="off" value="${decFormat(f.price)}" aria-label="Prezzo bobina"></div>
+      <div class="field"><input data-k="weight" type="number" min="1" step="1" inputmode="numeric" value="${esc(f.weight)}" aria-label="Peso bobina"><small>g</small></div>
+      <button class="del" type="button" aria-label="Elimina bobina" ${S.fil.length<2?'disabled':''}>×</button>
+    </div>`).join('');
+}
+$('filSetRows').addEventListener('input', e => {
+  const row = e.target.closest('.fset'); if (!row) return;
+  const f = S.fil[+row.dataset.ix]; f[e.target.dataset.k] = e.target.value;
+  if (e.target.dataset.k === 'name') buildFilUse();
+  changed();
+});
+$('filSetRows').addEventListener('click', e => {
+  if (!e.target.classList.contains('del')) return;
+  const ix = +e.target.closest('.fset').dataset.ix;
+  const gone = S.fil[ix].id;
+  S.fil.splice(ix,1);
+  filUse.forEach(u => { if (u.fid === gone) u.fid = S.fil[0].id; });
+  buildFilSet(); buildFilUse(); changed();
+});
+$('addFilSet').addEventListener('click', () => {
+  S.fil.push({id:'f'+Date.now().toString(36), name:'Filamento '+(S.fil.length+1), price:'', weight:1000});
+  buildFilSet(); buildFilUse(); changed();
+});
+
+/* --- filamenti: grammi usati in questa stampa --- */
+function buildFilUse(){
+  if (!filUse.length) filUse = [{fid:S.fil[0].id, g:''}];
+  $('filRows').innerHTML = filUse.map((u,ix) => `
+    <div class="frow" data-ix="${ix}">
+      <select aria-label="Filamento">${S.fil.map(f => `<option value="${f.id}" ${f.id===u.fid?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
+      <div class="field"><input type="number" min="0" step="1" inputmode="numeric" value="${u.g}" aria-label="Grammi"><small>g</small></div>
+      <button class="del" type="button" aria-label="Togli filamento" ${filUse.length<2?'disabled':''}>×</button>
+    </div>`).join('');
+}
+$('filRows').addEventListener('input', e => {
+  const row = e.target.closest('.frow'); if (!row) return;
+  filUse[+row.dataset.ix].g = e.target.value.replace(/\D/g,''); if (e.target.value !== filUse[+row.dataset.ix].g) e.target.value = filUse[+row.dataset.ix].g; calc();
+});
+$('filRows').addEventListener('change', e => {
+  if (e.target.tagName !== 'SELECT') return;
+  filUse[+e.target.closest('.frow').dataset.ix].fid = e.target.value; calc();
+});
+$('filRows').addEventListener('click', e => {
+  if (!e.target.classList.contains('del')) return;
+  filUse.splice(+e.target.closest('.frow').dataset.ix,1); buildFilUse(); calc();
+});
+$('addFil').addEventListener('click', () => { filUse.push({fid:S.fil[0].id, g:''}); buildFilUse(); });
+
+/* --- impostazioni semplici --- */
+const SIMPLE = ['currency','wastage','inkMl','kwhPrice','watt','watt3d'];
+function fillSettings(){
+  SIMPLE.forEach(k => $(k).value = k === 'kwhPrice' ? decFormat(S[k]) : S[k]);
+  INKS.forEach(i => $('p_'+i.id).value = decFormat(S.price[i.id]));
+  buildFilSet(); buildFilUse();
+  setCur();
+}
+function setCur(){ document.querySelectorAll('.cur').forEach(el => el.textContent = S.currency || '£'); }
+function bindSettings(){
+  SIMPLE.forEach(k => $(k).addEventListener('input', e => {
+    S[k] = e.target.value;
+    if (k === 'currency') setCur();
+    changed();
+  }));
+  $('applyAll').addEventListener('click', () => {
+    const v = $('globalPrice').value; if (v === '') return;
+    INKS.forEach(i => { S.price[i.id] = v; $('p_'+i.id).value = v; });
+    changed();
+  });
+  ['items','tH','tM','t3H','t3M'].forEach(id => $(id).addEventListener('input', calc));
+}
+
+/* ================= NAVIGAZIONE ================= */
+function route(){
+  const m = location.hash.slice(1);
+  mode = MODES[m] ? m : null;
+  $('homeView').hidden = !!mode;
+  $('calcView').hidden = !mode;
+  $('title').textContent = mode ? MODES[mode].title : 'Costo stampa';
+  const use3d = mode === '3d' || mode === 'mix', useUv = mode === 'uv' || mode === 'mix';
+  document.querySelectorAll('.m3d').forEach(el => el.hidden = !use3d);
+  document.querySelectorAll('.muv').forEach(el => el.hidden = !useUv);
+  $('t3dTitle').textContent = mode === 'mix' ? 'Tempo stampa 3D' : 'Tempo stimato';
+  $('tuvTitle').textContent = mode === 'mix' ? 'Tempo stampa UV' : 'Tempo stimato';
+  window.scrollTo(0,0);
+  calc();
+}
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => location.hash = b.dataset.go));
+$('backBtn').addEventListener('click', () => { if (history.length > 1 && location.hash) history.back(); else location.hash = ''; });
+window.addEventListener('hashchange', route);
+
+/* ================= CALCOLI ================= */
+const money = v => (S.currency || '£') + v.toFixed(v < 1 ? 3 : 2);
+const hoursOf = (h,m) => num($(h).value) + num($(m).value) / 60;
+function calc(){
+  if (!mode) return;
+  const use3d = mode === '3d' || mode === 'mix', useUv = mode === 'uv' || mode === 'mix';
+  const tariff = num(S.kwhPrice);
+  let missing = [];
+
+  // --- UV: inchiostro ---
+  let inkCost = 0, ml = 0, perMlList = [], uvElec = 0, uvKwh = 0, uvHours = 0;
+  if (useUv) {
+    const effMl = num(S.inkMl) * (1 - num(S.wastage)/100);
+    INKS.forEach(i => {
+      const u = num(usage[i.id]);
+      const perMl = effMl > 0 ? num(S.price[i.id]) / effMl : 0;
+      if (num(S.price[i.id]) > 0 && effMl > 0) perMlList.push(perMl);
+      if (u > 0) { if (!(perMl > 0)) missing.push('"Prezzi e cartucce"'); inkCost += u * perMl; ml += u; }
+    });
+    uvHours = hoursOf('tH','tM');
+    uvKwh = num(S.watt) / 1000 * uvHours;
+    uvElec = uvKwh * tariff;
+    $('rElec').textContent = uvHours > 0 ? money(uvElec) : '--';
+    $('rKwh').textContent = uvHours > 0 ? uvKwh.toFixed(3) + ' kWh' : '--';
+    $('usageTot').textContent = ml.toFixed(2) + ' ml';
+  }
+
+  // --- 3D: filamento (costo = grammi × prezzo bobina ÷ peso bobina) ---
+  let filCost = 0, grams = 0, e3 = 0, kwh3 = 0, h3 = 0;
+  if (use3d) {
+    filUse.forEach(u => {
+      const g = num(u.g); if (!(g > 0)) return;
+      const f = S.fil.find(x => x.id === u.fid) || S.fil[0];
+      const perG = num(f.weight) > 0 ? num(f.price) / num(f.weight) : 0;
+      if (!(perG > 0)) missing.push('"Filamenti"');
+      filCost += g * perG; grams += g;
+    });
+    h3 = hoursOf('t3H','t3M');
+    kwh3 = num(S.watt3d) / 1000 * h3;
+    e3 = kwh3 * tariff;
+    $('rElec3').textContent = h3 > 0 ? money(e3) : '--';
+    $('rKwh3').textContent = h3 > 0 ? kwh3.toFixed(3) + ' kWh' : '--';
+    $('filTot').textContent = Math.round(grams) + ' g';
+  }
+
+  const elec = uvElec + e3;
+  const total = inkCost + filCost + elec;
+  const has = total > 0 || ml > 0 || grams > 0;
+  const items = Math.max(1, Math.floor(num($('items').value)) || 1);
+
+  // barra: composizione del costo
+  const parts = [];
+  if (use3d) parts.push([filCost,'#1F8A5B','Filamento']);
+  if (useUv) {
+    if (ml > 0 && inkCost > 0) INKS.forEach(i => { const u = num(usage[i.id]); if (u > 0) parts.push([inkCost*u/ml, i.color, i.name]); });
+  }
+  parts.push([elec,'#F5A623','Elettricità']);
+  $('stack').innerHTML = total > 0 ? parts.filter(p => p[0] > 0).map(p =>
+    `<span title="${p[2]}" style="width:${p[0]/total*100}%;background:${p[1]}"></span>`).join('') : '';
+
+  $('rTotal').textContent = has ? money(total) : '--';
+  const bits = [];
+  if (use3d) bits.push('filamento ' + money(filCost));
+  if (useUv) bits.push('inchiostro ' + money(inkCost));
+  bits.push('elettricità ' + money(elec));
+  $('rTotalSub').textContent = missing.length
+    ? 'per stampa — mancano alcuni prezzi in ' + [...new Set(missing)].join(' e ')
+    : 'per stampa: ' + bits.join(' + ');
+
+  // statistiche in alto
+  const st = [];
+  if (use3d) st.push([grams > 0 ? Math.round(grams) + ' g' : '--', 'filamento']);
+  if (useUv) st.push([ml > 0 ? ml.toFixed(2) + ' ml' : '--', 'inchiostro']);
+  if (mode === 'uv') st.push([perMlList.length ? money(perMlList.reduce((a,b)=>a+b,0)/perMlList.length) : '--', 'costo medio / ml']);
+  st.push([(h3 + uvHours) > 0 ? fmtTime(h3 + uvHours) : '--', 'tempo totale']);
+  $('stats').className = 'stats' + (st.length === 3 ? ' three' : '');
+  $('stats').innerHTML = st.map(s => `<div><b>${s[0]}</b>${s[1]}</div>`).join('');
+
+  $('rItem').textContent = has ? money(total / items) : '--';
+  if (mode === 'uv') { $('rItemQty').textContent = has ? (ml / items).toFixed(3) + ' ml' : '--'; $('rItemQtyLbl').textContent = 'ml per pezzo'; }
+  else { $('rItemQty').textContent = has ? Math.round(grams / items) + ' g' : '--'; $('rItemQtyLbl').textContent = 'filamento per pezzo'; }
+}
+function fmtTime(h){ const t = Math.round(h*60); return Math.floor(t/60) + 'h ' + String(t%60).padStart(2,'0') + 'm'; }
+
+/* ================= SALVATAGGIO ================= */
+let saveTimer = null;
+function setSync(txt, cls){ const el = $('sync'); el.textContent = txt; el.className = 'sync ' + (cls||''); }
+function changed(){
+  calc();
+  try { localStorage.setItem(LS_SET, JSON.stringify(S)); } catch(e){}
+  if (!API_URL) return;
+  setSync('Modifiche da salvare…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveRemote, 1200);
+}
+async function saveRemote(){
+  setSync('Salvataggio…');
+  try {
+    const r = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ pin: getPin(), settings: {...S, fil: JSON.stringify(S.fil)} }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'errore');
+    setSync('Salvato su Drive', 'ok');
+  } catch(e) { setSync('Non salvato su Drive: ' + e.message + '. Riprova modificando un campo.', 'err'); }
+}
+async function loadRemote(pin){
+  const r = await fetch(API_URL + '?pin=' + encodeURIComponent(pin));
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.error || 'errore');
+  return d.settings;
+}
+function getPin(){ try { return localStorage.getItem(LS_PIN) || ''; } catch(e){ return ''; } }
+function merge(src){
+  const out = structuredClone(DEFAULTS);
+  if (!src) return out;
+  Object.keys(DEFAULTS).forEach(k => { if (src[k] !== undefined && k !== 'price' && k !== 'fil') out[k] = src[k]; });
+  if (src.price) Object.assign(out.price, src.price);
+  let fil = src.fil;
+  if (typeof fil === 'string') { try { fil = JSON.parse(fil); } catch(e){ fil = null; } }
+  if (Array.isArray(fil) && fil.length) out.fil = fil;
+  return out;
+}
+
+/* ================= AVVIO ================= */
+async function start(){
+  $('ver').textContent = APP_VERSION;
+  try { S = merge(JSON.parse(localStorage.getItem(LS_SET))); } catch(e){ S = merge(null); }
+  buildRows(); fillSettings(); bindSettings(); route();
+
+  if (!API_URL) { setSync('Solo locale'); return; }
+  const pin = getPin();
+  if (!pin) return showLock();
+  setSync('Caricamento…');
+  try { S = merge(await loadRemote(pin)); fillSettings(); calc(); setSync('Sincronizzato con Drive', 'ok'); }
+  catch(e) {
+    if (/pin/i.test(e.message)) { localStorage.removeItem(LS_PIN); showLock(); }
+    else setSync('Offline: uso i dati salvati sul telefono', 'err');
+  }
+}
+function showLock(){
+  $('lock').hidden = false; $('pinInput').focus();
+  $('lockForm').onsubmit = async ev => {
+    ev.preventDefault();
+    const pin = $('pinInput').value.trim();
+    $('lockMsg').textContent = 'Verifica…';
+    try {
+      const remote = await loadRemote(pin);
+      localStorage.setItem(LS_PIN, pin);
+      S = merge(remote); fillSettings(); calc();
+      $('lock').hidden = true; setSync('Sincronizzato con Drive', 'ok');
+    } catch(e) { $('lockMsg').textContent = /pin/i.test(e.message) ? 'PIN errato' : 'Server non raggiungibile: ' + e.message; }
+  };
+}
+start();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
