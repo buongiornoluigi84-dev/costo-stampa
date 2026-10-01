@@ -109,7 +109,10 @@ details[open] summary{margin-bottom:10px}
 .add{margin-top:10px;width:100%}
 .stats.three{grid-template-columns:repeat(3,1fr)}
 .plates-head{margin-bottom:8px}
-.plate h3{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px;font-size:1.05rem}
+.plate h3{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 6px;font-size:1.05rem}
+.pname{flex:1;min-width:0;font:inherit;font-weight:700;color:var(--ink);border:1px solid transparent;border-bottom-color:var(--line);border-radius:6px;background:transparent;padding:6px 6px}
+.pname:focus{outline:none;border-color:var(--uv);box-shadow:0 0 0 3px var(--uv-soft);background:#FAFAFC}
+.pname::placeholder{color:var(--ink)}
 .plate .sub2{font-size:.85rem;color:var(--muted);font-weight:600;margin:12px 0 6px}
 .addplate{margin:0 0 14px}
 .qh{font-size:1.05rem;margin:14px 2px 2px}
@@ -245,7 +248,7 @@ textarea.note:focus{outline:none;border-color:var(--uv);box-shadow:0 0 0 3px var
 
 <script>
 /* ================= CONFIG ================= */
-const APP_VERSION = 'v2.21';
+const APP_VERSION = 'v2.23';
 const API_URL = 'https://script.google.com/macros/s/AKfycbxBCAMvoNrKcNec6qYU-QPCKo_Z5jrPAkweDoV2wxlIz01wzBrtR2H73aZNqHqG_Pad/exec';
 
 const INKS = [
@@ -274,8 +277,8 @@ let S = structuredClone(DEFAULTS);
 let mode = null;
 let quotes = [];       // preventivi salvati
 let curQ = null;       // id del preventivo aperto (null = calcolo nuovo)
-const new3d = () => ({fil:[{fid:S.fil[0].id, g:''}], h:'', m:''});
-const newUv = () => ({u:{C:'',M:'',Y:'',K:'',W:'',G:''}, h:'', m:''});
+const new3d = () => ({name:'', fil:[{fid:S.fil[0].id, g:''}], h:'', m:''});
+const newUv = () => ({name:'', u:{C:'',M:'',Y:'',K:'',W:'',G:''}, h:'', m:''});
 let plates3d = [], platesUv = [];
 
 const $ = id => document.getElementById(id);
@@ -314,13 +317,14 @@ function timeHTML(p){
 function outHTML(){
   return `<div class="out"><div><b data-o="cost">--</b>costo piatto</div><div><b data-o="info">--</b><span data-o="infoLbl">elettricità</span></div></div>`;
 }
+function nameHTML(p, pi){ return `<input class="pname" data-name type="text" maxlength="60" value="${esc(p.name)}" placeholder="Piatto ${pi+1}" aria-label="Nome piatto ${pi+1}">`; }
 function delBtn(n, label){ return n > 1 ? `<button class="del" data-delplate type="button" aria-label="${label}">×</button>` : ''; }
 
 function render3d(){
   if (!plates3d.length) plates3d = [new3d()];
   $('plates3d').innerHTML = plates3d.map((p,pi) => `
     <section class="plate" data-k="3d" data-pi="${pi}">
-      <h3><span>Piatto ${pi+1}</span>${delBtn(plates3d.length,'Elimina piatto '+(pi+1))}</h3>
+      <h3>${nameHTML(p,pi)}${delBtn(plates3d.length,'Elimina piatto '+(pi+1))}</h3>
       <div class="sub2">Filamento</div>
       ${p.fil.map((u,fi) => `
         <div class="frow" data-fi="${fi}">
@@ -347,7 +351,7 @@ function renderUv(){
   if (!platesUv.length) platesUv = [newUv()];
   $('platesUv').innerHTML = platesUv.map((p,pi) => `
     <section class="plate" data-k="uv" data-pi="${pi}">
-      <h3><span>Piatto ${pi+1}</span>${delBtn(platesUv.length,'Elimina piatto '+(pi+1))}</h3>
+      <h3>${nameHTML(p,pi)}${delBtn(platesUv.length,'Elimina piatto '+(pi+1))}</h3>
       <div class="sub2">Inchiostro</div>
       ${INKS.map(i => `<div class="row"><span class="dot" style="background:${i.color}"></span><label>${i.name}</label>
         <div class="field"><input data-ink="${i.id}" class="dec" type="text" inputmode="numeric" autocomplete="off" value="${decFormat(p.u[i.id])}" aria-label="${i.name} ml"><small>ml</small></div></div>`).join('')}
@@ -364,6 +368,7 @@ function bindPlates(){
     c.addEventListener('input', e => {
       const p = plateOf(e.target); if (!p) return;
       const t = e.target;
+      if (t.hasAttribute('data-name')) { p.name = t.value; return; }
       if (t.dataset.t) p[t.dataset.t] = t.value;
       else if (t.dataset.ink) p.u[t.dataset.ink] = t.value;
       else if (t.hasAttribute('data-g')) {
@@ -670,7 +675,7 @@ async function flush(){
       setSync('Salvataggio…');
       const p = pend[0];
       if (p.op === 'saveSettings') await api({action:'saveSettings', settings:{...S, fil:JSON.stringify(S.fil)}});
-      else await api(p);
+      else await api({action:p.op, quote:p.quote, id:p.id});
       pend.shift(); lsSet(LS_PEND, pend);
     }
     setSync('Salvato su Drive', 'ok');

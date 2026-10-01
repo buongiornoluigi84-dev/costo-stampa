@@ -1,5 +1,5 @@
-// Costo stampa — service worker v2.21
-const CACHE = 'costostampa-v2.21';
+// Costo stampa — service worker v2.23
+const CACHE = 'costostampa-v2.23';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
