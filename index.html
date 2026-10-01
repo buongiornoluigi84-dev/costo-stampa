@@ -108,6 +108,10 @@ details[open] summary{margin-bottom:10px}
 .del:hover{background:var(--uv-soft)}
 .add{margin-top:10px;width:100%}
 .stats.three{grid-template-columns:repeat(3,1fr)}
+.plates-head{margin-bottom:8px}
+.plate h3{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px;font-size:1.05rem}
+.plate .sub2{font-size:.85rem;color:var(--muted);font-weight:600;margin:12px 0 6px}
+.addplate{margin:0 0 14px}
 </style>
 </head>
 <body>
@@ -145,58 +149,17 @@ details[open] summary{margin-bottom:10px}
       <div class="stats" id="stats"></div>
     </div>
 
-    <!-- 3D: filamento -->
-    <section class="m3d">
-      <h2>Filamento usato</h2>
-      <p class="hint">Inserisci i grammi che lo slicer ti indica per ogni filamento.</p>
-      <div id="filRows"></div>
-      <button class="btn ghost add" id="addFil" type="button">+ Aggiungi filamento</button>
-      <div class="total"><span>Totale</span><span id="filTot">0 g</span></div>
-    </section>
+    <!-- 3D: piatti -->
+    <section class="m3d plates-head"><h2 id="p3Title">Piatti</h2>
+      <p class="hint">Per ogni piatto inserisci i grammi di ogni filamento e il tempo che ti indica lo slicer.</p></section>
+    <div id="plates3d" class="m3d"></div>
+    <button class="btn ghost add m3d addplate" id="addPlate3d" type="button">+ Aggiungi piatto</button>
 
-    <section class="m3d">
-      <h2 id="t3dTitle">Tempo stimato</h2>
-      <p class="hint">Il tempo che ti indica lo slicer per la stampa 3D.</p>
-      <div class="pair">
-        <div class="field"><input id="t3H" type="number" min="0" step="1" inputmode="numeric"><small>ore</small></div>
-        <div class="field"><input id="t3M" type="number" min="0" step="1" inputmode="numeric"><small>min</small></div>
-      </div>
-      <div class="out">
-        <div><b id="rElec3">--</b>costo elettricità</div>
-        <div><b id="rKwh3">--</b>energia usata</div>
-      </div>
-    </section>
-
-    <!-- UV: inchiostro -->
-    <section class="muv">
-      <h2>Inchiostro usato per stampa</h2>
-      <p class="hint">Inserisci i ml che il software del printer ti indica per ogni colore.</p>
-      <div id="usageRows"></div>
-      <div class="total"><span>Totale</span><span id="usageTot">0 ml</span></div>
-    </section>
-
-    <section class="muv">
-      <h2 id="tuvTitle">Tempo stimato</h2>
-      <p class="hint">Il tempo che ti indica lo slicer per la stampa UV.</p>
-      <div class="pair">
-        <div class="field"><input id="tH" type="number" min="0" step="1" inputmode="numeric"><small>ore</small></div>
-        <div class="field"><input id="tM" type="number" min="0" step="1" inputmode="numeric"><small>min</small></div>
-      </div>
-      <div class="out">
-        <div><b id="rElec">--</b>costo elettricità</div>
-        <div><b id="rKwh">--</b>energia usata</div>
-      </div>
-    </section>
-
-    <section>
-      <h2>Pezzi per foglio</h2>
-      <p class="hint">Quanti oggetti stampi in un colpo solo.</p>
-      <div class="single"><div class="field"><input id="items" type="number" min="1" step="1" value="1"><small>pezzi</small></div></div>
-      <div class="out">
-        <div><b id="rItem">--</b>costo per pezzo</div>
-        <div><b id="rItemQty">--</b><span id="rItemQtyLbl">per pezzo</span></div>
-      </div>
-    </section>
+    <!-- UV: piatti -->
+    <section class="muv plates-head"><h2 id="puvTitle">Piatti</h2>
+      <p class="hint">Per ogni piatto inserisci i ml di ogni colore e il tempo che ti indica il software della stampante.</p></section>
+    <div id="platesUv" class="muv"></div>
+    <button class="btn ghost add muv addplate" id="addPlateUv" type="button">+ Aggiungi piatto</button>
 
     <!-- impostazioni filamenti -->
     <section class="m3d">
@@ -252,7 +215,7 @@ details[open] summary{margin-bottom:10px}
 
 <script>
 /* ================= CONFIG ================= */
-const APP_VERSION = 'v2.02';
+const APP_VERSION = 'v2.10';
 const API_URL = ''; // <-- incolla qui l'URL /exec della distribuzione Apps Script
 
 const INKS = [
@@ -278,8 +241,11 @@ const LS_SET = 'inkcalc_settings', LS_PIN = 'inkcalc_pin';
 
 let S = structuredClone(DEFAULTS);
 let mode = null;
-const usage = {C:'',M:'',Y:'',K:'',W:'',G:''}; // non salvato: cambia a ogni lavoro
-let filUse = [];                                 // non salvato: [{fid, g}]
+// piatti: non salvati, cambiano a ogni progetto
+const new3d = () => ({fil:[{fid:S.fil[0].id, g:''}], h:'', m:''});
+const newUv = () => ({u:{C:'',M:'',Y:'',K:'',W:'',G:''}, h:'', m:''});
+let plates3d = [], platesUv = [];
+
 const $ = id => document.getElementById(id);
 const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -293,17 +259,95 @@ function decInput(el){
 }
 document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('dec')) decInput(e.target); }, true);
 
-/* ================= UI BUILD ================= */
+/* ================= UI: prezzi cartucce ================= */
 function fieldHTML(id, unit, pre){
   return `<div class="field">${pre?'<small class="pre cur">'+esc(S.currency)+'</small>':''}<input id="${id}" class="dec" type="text" inputmode="numeric" autocomplete="off">${unit?'<small>'+unit+'</small>':''}</div>`;
 }
-function buildRows(){
-  $('usageRows').innerHTML = INKS.map(i =>
-    `<div class="row"><span class="dot" style="background:${i.color}"></span><label for="u_${i.id}">${i.name}</label>${fieldHTML('u_'+i.id,'ml')}</div>`).join('');
+function buildPriceRows(){
   $('priceRows').innerHTML = INKS.map(i =>
     `<div class="row"><span class="dot" style="background:${i.color}"></span><label for="p_${i.id}">${i.name}</label>${fieldHTML('p_'+i.id,'',true)}</div>`).join('');
-  INKS.forEach(i => $('u_'+i.id).addEventListener('input', e => { usage[i.id] = e.target.value; calc(); }));
   INKS.forEach(i => $('p_'+i.id).addEventListener('input', e => { S.price[i.id] = e.target.value; changed(); }));
+}
+
+/* ================= UI: piatti ================= */
+function timeHTML(p){
+  return `<div class="pair">
+      <div class="field"><input data-t="h" type="number" min="0" step="1" inputmode="numeric" value="${esc(p.h)}" aria-label="Ore"><small>ore</small></div>
+      <div class="field"><input data-t="m" type="number" min="0" step="1" inputmode="numeric" value="${esc(p.m)}" aria-label="Minuti"><small>min</small></div>
+    </div>`;
+}
+function outHTML(){
+  return `<div class="out"><div><b data-o="cost">--</b>costo piatto</div><div><b data-o="info">--</b><span data-o="infoLbl">elettricità</span></div></div>`;
+}
+function delBtn(n, label){ return n > 1 ? `<button class="del" data-delplate type="button" aria-label="${label}">×</button>` : ''; }
+
+function render3d(){
+  if (!plates3d.length) plates3d = [new3d()];
+  $('plates3d').innerHTML = plates3d.map((p,pi) => `
+    <section class="plate" data-k="3d" data-pi="${pi}">
+      <h3><span>Piatto ${pi+1}</span>${delBtn(plates3d.length,'Elimina piatto '+(pi+1))}</h3>
+      <div class="sub2">Filamento</div>
+      ${p.fil.map((u,fi) => `
+        <div class="frow" data-fi="${fi}">
+          <select aria-label="Filamento">${S.fil.map(f => `<option value="${f.id}" ${f.id===u.fid?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
+          <div class="field"><input data-g type="number" min="0" step="1" inputmode="numeric" value="${esc(u.g)}" aria-label="Grammi"><small>g</small></div>
+          <button class="del" data-delfil type="button" aria-label="Togli filamento" ${p.fil.length<2?'disabled':''}>×</button>
+        </div>`).join('')}
+      <button class="btn ghost add" data-addfil type="button">+ Aggiungi filamento</button>
+      <div class="sub2">Tempo stimato</div>
+      ${timeHTML(p)}
+      ${outHTML()}
+    </section>`).join('');
+}
+function renderUv(){
+  if (!platesUv.length) platesUv = [newUv()];
+  $('platesUv').innerHTML = platesUv.map((p,pi) => `
+    <section class="plate" data-k="uv" data-pi="${pi}">
+      <h3><span>Piatto ${pi+1}</span>${delBtn(platesUv.length,'Elimina piatto '+(pi+1))}</h3>
+      <div class="sub2">Inchiostro</div>
+      ${INKS.map(i => `<div class="row"><span class="dot" style="background:${i.color}"></span><label>${i.name}</label>
+        <div class="field"><input data-ink="${i.id}" class="dec" type="text" inputmode="numeric" autocomplete="off" value="${decFormat(p.u[i.id])}" aria-label="${i.name} ml"><small>ml</small></div></div>`).join('')}
+      <div class="sub2">Tempo stimato</div>
+      ${timeHTML(p)}
+      ${outHTML()}
+    </section>`).join('');
+}
+const plateOf = el => { const s = el.closest('.plate'); return s ? (s.dataset.k === '3d' ? plates3d : platesUv)[+s.dataset.pi] : null; };
+
+function bindPlates(){
+  ['plates3d','platesUv'].forEach(cid => {
+    const c = $(cid);
+    c.addEventListener('input', e => {
+      const p = plateOf(e.target); if (!p) return;
+      const t = e.target;
+      if (t.dataset.t) p[t.dataset.t] = t.value;
+      else if (t.dataset.ink) p.u[t.dataset.ink] = t.value;
+      else if (t.hasAttribute('data-g')) {
+        const v = t.value.replace(/\D/g,''); if (t.value !== v) t.value = v;
+        p.fil[+t.closest('.frow').dataset.fi].g = v;
+      }
+      calc();
+    });
+    c.addEventListener('change', e => {
+      if (e.target.tagName !== 'SELECT') return;
+      plateOf(e.target).fil[+e.target.closest('.frow').dataset.fi].fid = e.target.value; calc();
+    });
+    c.addEventListener('click', e => {
+      const t = e.target.closest('button'); if (!t) return;
+      const sec = t.closest('.plate'), list = sec.dataset.k === '3d' ? plates3d : platesUv, pi = +sec.dataset.pi;
+      if (t.hasAttribute('data-delplate')) {
+        list.splice(pi,1);
+      } else if (t.hasAttribute('data-addfil')) {
+        list[pi].fil.push({fid:S.fil[0].id, g:''});
+      } else if (t.hasAttribute('data-delfil')) {
+        list[pi].fil.splice(+t.closest('.frow').dataset.fi,1);
+      } else return;
+      sec.dataset.k === '3d' ? render3d() : renderUv();
+      calc();
+    });
+  });
+  $('addPlate3d').addEventListener('click', () => { plates3d.push(new3d()); render3d(); calc(); });
+  $('addPlateUv').addEventListener('click', () => { platesUv.push(newUv()); renderUv(); calc(); });
 }
 
 /* --- filamenti: impostazioni (bobine) --- */
@@ -319,7 +363,7 @@ function buildFilSet(){
 $('filSetRows').addEventListener('input', e => {
   const row = e.target.closest('.fset'); if (!row) return;
   const f = S.fil[+row.dataset.ix]; f[e.target.dataset.k] = e.target.value;
-  if (e.target.dataset.k === 'name') buildFilUse();
+  if (e.target.dataset.k === 'name') render3d();
   changed();
 });
 $('filSetRows').addEventListener('click', e => {
@@ -327,44 +371,20 @@ $('filSetRows').addEventListener('click', e => {
   const ix = +e.target.closest('.fset').dataset.ix;
   const gone = S.fil[ix].id;
   S.fil.splice(ix,1);
-  filUse.forEach(u => { if (u.fid === gone) u.fid = S.fil[0].id; });
-  buildFilSet(); buildFilUse(); changed();
+  plates3d.forEach(p => p.fil.forEach(u => { if (u.fid === gone) u.fid = S.fil[0].id; }));
+  buildFilSet(); render3d(); changed();
 });
 $('addFilSet').addEventListener('click', () => {
   S.fil.push({id:'f'+Date.now().toString(36), name:'Filamento '+(S.fil.length+1), price:'', weight:1000});
-  buildFilSet(); buildFilUse(); changed();
+  buildFilSet(); render3d(); changed();
 });
-
-/* --- filamenti: grammi usati in questa stampa --- */
-function buildFilUse(){
-  if (!filUse.length) filUse = [{fid:S.fil[0].id, g:''}];
-  $('filRows').innerHTML = filUse.map((u,ix) => `
-    <div class="frow" data-ix="${ix}">
-      <select aria-label="Filamento">${S.fil.map(f => `<option value="${f.id}" ${f.id===u.fid?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
-      <div class="field"><input type="number" min="0" step="1" inputmode="numeric" value="${u.g}" aria-label="Grammi"><small>g</small></div>
-      <button class="del" type="button" aria-label="Togli filamento" ${filUse.length<2?'disabled':''}>×</button>
-    </div>`).join('');
-}
-$('filRows').addEventListener('input', e => {
-  const row = e.target.closest('.frow'); if (!row) return;
-  filUse[+row.dataset.ix].g = e.target.value.replace(/\D/g,''); if (e.target.value !== filUse[+row.dataset.ix].g) e.target.value = filUse[+row.dataset.ix].g; calc();
-});
-$('filRows').addEventListener('change', e => {
-  if (e.target.tagName !== 'SELECT') return;
-  filUse[+e.target.closest('.frow').dataset.ix].fid = e.target.value; calc();
-});
-$('filRows').addEventListener('click', e => {
-  if (!e.target.classList.contains('del')) return;
-  filUse.splice(+e.target.closest('.frow').dataset.ix,1); buildFilUse(); calc();
-});
-$('addFil').addEventListener('click', () => { filUse.push({fid:S.fil[0].id, g:''}); buildFilUse(); });
 
 /* --- impostazioni semplici --- */
 const SIMPLE = ['currency','wastage','inkMl','kwhPrice','watt','watt3d'];
 function fillSettings(){
   SIMPLE.forEach(k => $(k).value = k === 'kwhPrice' ? decFormat(S[k]) : S[k]);
   INKS.forEach(i => $('p_'+i.id).value = decFormat(S.price[i.id]));
-  buildFilSet(); buildFilUse();
+  buildFilSet(); render3d(); renderUv();
   setCur();
 }
 function setCur(){ document.querySelectorAll('.cur').forEach(el => el.textContent = S.currency || '£'); }
@@ -379,7 +399,6 @@ function bindSettings(){
     INKS.forEach(i => { S.price[i.id] = v; $('p_'+i.id).value = v; });
     changed();
   });
-  ['items','tH','tM','t3H','t3M'].forEach(id => $(id).addEventListener('input', calc));
 }
 
 /* ================= NAVIGAZIONE ================= */
@@ -392,8 +411,8 @@ function route(){
   const use3d = mode === '3d' || mode === 'mix', useUv = mode === 'uv' || mode === 'mix';
   document.querySelectorAll('.m3d').forEach(el => el.hidden = !use3d);
   document.querySelectorAll('.muv').forEach(el => el.hidden = !useUv);
-  $('t3dTitle').textContent = mode === 'mix' ? 'Tempo stampa 3D' : 'Tempo stimato';
-  $('tuvTitle').textContent = mode === 'mix' ? 'Tempo stampa UV' : 'Tempo stimato';
+  $('p3Title').textContent = mode === 'mix' ? 'Piatti stampa 3D' : 'Piatti';
+  $('puvTitle').textContent = mode === 'mix' ? 'Piatti stampa UV' : 'Piatti';
   window.scrollTo(0,0);
   calc();
 }
@@ -403,60 +422,67 @@ window.addEventListener('hashchange', route);
 
 /* ================= CALCOLI ================= */
 const money = v => (S.currency || '£') + v.toFixed(v < 1 ? 3 : 2);
-const hoursOf = (h,m) => num($(h).value) + num($(m).value) / 60;
+const fmtTime = h => { const t = Math.round(h*60); return Math.floor(t/60) + 'h ' + String(t%60).padStart(2,'0') + 'm'; };
+function setOut(sec, cost, has, info, lbl){
+  sec.querySelector('[data-o=cost]').textContent = has ? money(cost) : '--';
+  sec.querySelector('[data-o=info]').textContent = info;
+  sec.querySelector('[data-o=infoLbl]').textContent = lbl;
+}
 function calc(){
   if (!mode) return;
   const use3d = mode === '3d' || mode === 'mix', useUv = mode === 'uv' || mode === 'mix';
   const tariff = num(S.kwhPrice);
-  let missing = [];
+  const missing = [];
 
-  // --- UV: inchiostro ---
-  let inkCost = 0, ml = 0, perMlList = [], uvElec = 0, uvKwh = 0, uvHours = 0;
+  // --- UV: inchiostro = ml × prezzo ÷ (ml cartuccia − spreco) ---
+  let inkCost = 0, ml = 0, uvElec = 0, uvHours = 0;
+  const inkBy = {C:0,M:0,Y:0,K:0,W:0,G:0};
+  const effMl = num(S.inkMl) * (1 - num(S.wastage)/100);
+  const perMl = id => effMl > 0 ? num(S.price[id]) / effMl : 0;
   if (useUv) {
-    const effMl = num(S.inkMl) * (1 - num(S.wastage)/100);
-    INKS.forEach(i => {
-      const u = num(usage[i.id]);
-      const perMl = effMl > 0 ? num(S.price[i.id]) / effMl : 0;
-      if (num(S.price[i.id]) > 0 && effMl > 0) perMlList.push(perMl);
-      if (u > 0) { if (!(perMl > 0)) missing.push('"Prezzi e cartucce"'); inkCost += u * perMl; ml += u; }
+    document.querySelectorAll('#platesUv .plate').forEach((sec, pi) => {
+      const p = platesUv[pi];
+      let c = 0, pml = 0;
+      INKS.forEach(i => {
+        const u = num(p.u[i.id]); if (!(u > 0)) return;
+        if (!(perMl(i.id) > 0)) missing.push('"Prezzi e cartucce"');
+        c += u * perMl(i.id); pml += u; inkBy[i.id] += u * perMl(i.id);
+      });
+      const hrs = num(p.h) + num(p.m)/60;
+      const e = num(S.watt) / 1000 * hrs * tariff;
+      inkCost += c; ml += pml; uvElec += e; uvHours += hrs;
+      setOut(sec, c + e, pml > 0 || hrs > 0, hrs > 0 ? money(e) : '--', pml > 0 ? 'elettricità · ' + pml.toFixed(2) + ' ml' : 'elettricità');
     });
-    uvHours = hoursOf('tH','tM');
-    uvKwh = num(S.watt) / 1000 * uvHours;
-    uvElec = uvKwh * tariff;
-    $('rElec').textContent = uvHours > 0 ? money(uvElec) : '--';
-    $('rKwh').textContent = uvHours > 0 ? uvKwh.toFixed(3) + ' kWh' : '--';
-    $('usageTot').textContent = ml.toFixed(2) + ' ml';
   }
 
-  // --- 3D: filamento (costo = grammi × prezzo bobina ÷ peso bobina) ---
-  let filCost = 0, grams = 0, e3 = 0, kwh3 = 0, h3 = 0;
+  // --- 3D: filamento = grammi × prezzo bobina ÷ peso bobina ---
+  let filCost = 0, grams = 0, e3 = 0, h3 = 0;
   if (use3d) {
-    filUse.forEach(u => {
-      const g = num(u.g); if (!(g > 0)) return;
-      const f = S.fil.find(x => x.id === u.fid) || S.fil[0];
-      const perG = num(f.weight) > 0 ? num(f.price) / num(f.weight) : 0;
-      if (!(perG > 0)) missing.push('"Filamenti"');
-      filCost += g * perG; grams += g;
+    document.querySelectorAll('#plates3d .plate').forEach((sec, pi) => {
+      const p = plates3d[pi];
+      let c = 0, pg = 0;
+      p.fil.forEach(u => {
+        const g = num(u.g); if (!(g > 0)) return;
+        const f = S.fil.find(x => x.id === u.fid) || S.fil[0];
+        const perG = num(f.weight) > 0 ? num(f.price) / num(f.weight) : 0;
+        if (!(perG > 0)) missing.push('"Filamenti"');
+        c += g * perG; pg += g;
+      });
+      const hrs = num(p.h) + num(p.m)/60;
+      const e = num(S.watt3d) / 1000 * hrs * tariff;
+      filCost += c; grams += pg; e3 += e; h3 += hrs;
+      setOut(sec, c + e, pg > 0 || hrs > 0, hrs > 0 ? money(e) : '--', pg > 0 ? 'elettricità · ' + Math.round(pg) + ' g' : 'elettricità');
     });
-    h3 = hoursOf('t3H','t3M');
-    kwh3 = num(S.watt3d) / 1000 * h3;
-    e3 = kwh3 * tariff;
-    $('rElec3').textContent = h3 > 0 ? money(e3) : '--';
-    $('rKwh3').textContent = h3 > 0 ? kwh3.toFixed(3) + ' kWh' : '--';
-    $('filTot').textContent = Math.round(grams) + ' g';
   }
 
   const elec = uvElec + e3;
   const total = inkCost + filCost + elec;
   const has = total > 0 || ml > 0 || grams > 0;
-  const items = Math.max(1, Math.floor(num($('items').value)) || 1);
 
   // barra: composizione del costo
   const parts = [];
   if (use3d) parts.push([filCost,'#1F8A5B','Filamento']);
-  if (useUv) {
-    if (ml > 0 && inkCost > 0) INKS.forEach(i => { const u = num(usage[i.id]); if (u > 0) parts.push([inkCost*u/ml, i.color, i.name]); });
-  }
+  if (useUv) INKS.forEach(i => parts.push([inkBy[i.id], i.color, i.name]));
   parts.push([elec,'#F5A623','Elettricità']);
   $('stack').innerHTML = total > 0 ? parts.filter(p => p[0] > 0).map(p =>
     `<span title="${p[2]}" style="width:${p[0]/total*100}%;background:${p[1]}"></span>`).join('') : '';
@@ -467,23 +493,19 @@ function calc(){
   if (useUv) bits.push('inchiostro ' + money(inkCost));
   bits.push('elettricità ' + money(elec));
   $('rTotalSub').textContent = missing.length
-    ? 'per stampa — mancano alcuni prezzi in ' + [...new Set(missing)].join(' e ')
-    : 'per stampa: ' + bits.join(' + ');
+    ? 'progetto — mancano alcuni prezzi in ' + [...new Set(missing)].join(' e ')
+    : 'progetto: ' + bits.join(' + ');
 
   // statistiche in alto
+  const nPl = (use3d ? plates3d.length : 0) + (useUv ? platesUv.length : 0);
   const st = [];
   if (use3d) st.push([grams > 0 ? Math.round(grams) + ' g' : '--', 'filamento']);
   if (useUv) st.push([ml > 0 ? ml.toFixed(2) + ' ml' : '--', 'inchiostro']);
-  if (mode === 'uv') st.push([perMlList.length ? money(perMlList.reduce((a,b)=>a+b,0)/perMlList.length) : '--', 'costo medio / ml']);
+  if (mode !== 'mix') st.push([nPl, nPl === 1 ? 'piatto' : 'piatti']);
   st.push([(h3 + uvHours) > 0 ? fmtTime(h3 + uvHours) : '--', 'tempo totale']);
   $('stats').className = 'stats' + (st.length === 3 ? ' three' : '');
   $('stats').innerHTML = st.map(s => `<div><b>${s[0]}</b>${s[1]}</div>`).join('');
-
-  $('rItem').textContent = has ? money(total / items) : '--';
-  if (mode === 'uv') { $('rItemQty').textContent = has ? (ml / items).toFixed(3) + ' ml' : '--'; $('rItemQtyLbl').textContent = 'ml per pezzo'; }
-  else { $('rItemQty').textContent = has ? Math.round(grams / items) + ' g' : '--'; $('rItemQtyLbl').textContent = 'filamento per pezzo'; }
 }
-function fmtTime(h){ const t = Math.round(h*60); return Math.floor(t/60) + 'h ' + String(t%60).padStart(2,'0') + 'm'; }
 
 /* ================= SALVATAGGIO ================= */
 let saveTimer = null;
@@ -528,7 +550,7 @@ function merge(src){
 async function start(){
   $('ver').textContent = APP_VERSION;
   try { S = merge(JSON.parse(localStorage.getItem(LS_SET))); } catch(e){ S = merge(null); }
-  buildRows(); fillSettings(); bindSettings(); route();
+  buildPriceRows(); bindPlates(); fillSettings(); bindSettings(); route();
 
   if (!API_URL) { setSync('Solo locale'); return; }
   const pin = getPin();
