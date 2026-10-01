@@ -112,6 +112,21 @@ details[open] summary{margin-bottom:10px}
 .plate h3{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px;font-size:1.05rem}
 .plate .sub2{font-size:.85rem;color:var(--muted);font-weight:600;margin:12px 0 6px}
 .addplate{margin:0 0 14px}
+.qh{font-size:1.05rem;margin:14px 2px 2px}
+.qitem{display:block;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--panel);border:0;border-radius:12px;padding:12px 14px;margin-top:8px;cursor:pointer}
+.qitem:focus-visible{outline:3px solid var(--uv);outline-offset:2px}
+.qitem .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.qitem b{font-size:1rem}
+.qitem .tot{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qitem .meta{font-size:.8rem;color:var(--muted);margin-top:2px}
+.qempty{font-size:.85rem;color:var(--muted);margin:6px 2px}
+.qtag{display:inline-block;font-size:.8rem;font-weight:600;color:var(--uv);background:var(--uv-soft);border-radius:999px;padding:4px 10px;margin:0 0 8px 8px}
+.hero .saved{font-size:.85rem;color:#E8E4F5;background:rgba(255,255,255,.08);border-radius:8px;padding:8px 10px;margin:10px 0 0}
+.qbtns{display:flex;gap:8px;margin-top:10px}
+.qbtns .btn{flex:1}
+.btn.danger{background:#FBE9E7;color:var(--err)}
+textarea.note{font:inherit;width:100%;border:1px solid var(--line);border-radius:9px;background:#FAFAFC;padding:9px 10px;color:var(--ink);resize:vertical}
+textarea.note:focus{outline:none;border-color:var(--uv);box-shadow:0 0 0 3px var(--uv-soft)}
 </style>
 </head>
 <body>
@@ -136,15 +151,20 @@ details[open] summary{margin-bottom:10px}
     <button class="mode-card" data-go="3d" type="button"><span class="ico p3">3D</span><span><b>3D printing</b><span class="d">Filamento + elettricità</span></span></button>
     <button class="mode-card" data-go="uv" type="button"><span class="ico uv">UV</span><span><b>UV printing</b><span class="d">Inchiostro + elettricità</span></span></button>
     <button class="mode-card" data-go="mix" type="button"><span class="ico mix" style="font-size:.85rem;line-height:1;text-align:center">3D<br>UV</span><span><b>3D &amp; UV printing</b><span class="d">Filamento + inchiostro + elettricità</span></span></button>
+    <div>
+      <h2 class="qh">Preventivi salvati</h2>
+      <div id="quoteList"></div>
+    </div>
   </div>
 
   <!-- CALCOLATORE -->
   <div id="calcView" hidden>
-    <button class="back" id="backBtn" type="button">← Home</button>
+    <button class="back" id="backBtn" type="button">← Home</button><span class="qtag" id="qTag" hidden></span>
 
     <div class="hero" aria-live="polite">
       <div class="big" id="rTotal">--</div>
       <div class="sub" id="rTotalSub">per stampa</div>
+      <div class="saved" id="rSaved" hidden></div>
       <div class="stack" id="stack"></div>
       <div class="stats" id="stats"></div>
     </div>
@@ -160,6 +180,16 @@ details[open] summary{margin-bottom:10px}
       <p class="hint">Per ogni piatto inserisci i ml di ogni colore e il tempo che ti indica il software della stampante.</p></section>
     <div id="platesUv" class="muv"></div>
     <button class="btn ghost add muv addplate" id="addPlateUv" type="button">+ Aggiungi piatto</button>
+
+    <!-- preventivo -->
+    <section id="quoteSec">
+      <h2>Preventivo</h2>
+      <div class="single"><label for="qName">Nome</label><div class="field"><input id="qName" type="text" maxlength="80" style="text-align:left" placeholder="es. Fontana 4 piatti"></div></div>
+      <div class="single" style="margin-top:10px"><label for="qNote">Note</label><textarea id="qNote" class="note" rows="3" maxlength="2000"></textarea></div>
+      <div class="qbtns"><button class="btn" id="qSave" type="button">Salva preventivo</button><button class="btn ghost" id="qSaveNew" type="button" hidden>Salva come nuovo</button></div>
+      <div class="qbtns"><button class="btn ghost" id="qNewCalc" type="button">Nuovo calcolo</button><button class="btn danger" id="qDelete" type="button" hidden>Elimina</button></div>
+      <p class="hint" id="qMsg" style="margin:10px 0 0" aria-live="polite"></p>
+    </section>
 
     <!-- impostazioni filamenti -->
     <section class="m3d">
@@ -215,7 +245,7 @@ details[open] summary{margin-bottom:10px}
 
 <script>
 /* ================= CONFIG ================= */
-const APP_VERSION = 'v2.10';
+const APP_VERSION = 'v2.20';
 const API_URL = ''; // <-- incolla qui l'URL /exec della distribuzione Apps Script
 
 const INKS = [
@@ -238,10 +268,12 @@ const DEFAULTS = {
   fil:[{id:'f1', name:'PLA', price:'', weight:1000}]
 };
 const LS_SET = 'inkcalc_settings', LS_PIN = 'inkcalc_pin';
+const LS_Q = 'inkcalc_quotes', LS_PEND = 'inkcalc_pending', LS_SYNCED = 'inkcalc_synced';
 
 let S = structuredClone(DEFAULTS);
 let mode = null;
-// piatti: non salvati, cambiano a ogni progetto
+let quotes = [];       // preventivi salvati
+let curQ = null;       // id del preventivo aperto (null = calcolo nuovo)
 const new3d = () => ({fil:[{fid:S.fil[0].id, g:''}], h:'', m:''});
 const newUv = () => ({u:{C:'',M:'',Y:'',K:'',W:'',G:''}, h:'', m:''});
 let plates3d = [], platesUv = [];
@@ -249,6 +281,9 @@ let plates3d = [], platesUv = [];
 const $ = id => document.getElementById(id);
 const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch(e){ return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+const fmtDate = t => new Date(t).toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit', year:'numeric'});
 
 /* ===== DECIMALI AUTOMATICI: 125 -> 1.25, 13 -> 0.13 ===== */
 function decFormat(v){ const n = parseFloat(v); return isFinite(n) && n > 0 ? n.toFixed(2) : ''; }
@@ -289,7 +324,7 @@ function render3d(){
       <div class="sub2">Filamento</div>
       ${p.fil.map((u,fi) => `
         <div class="frow" data-fi="${fi}">
-          <select aria-label="Filamento">${S.fil.map(f => `<option value="${f.id}" ${f.id===u.fid?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
+          <select aria-label="Filamento">${filOptions(u.fid)}</select>
           <div class="field"><input data-g type="number" min="0" step="1" inputmode="numeric" value="${esc(u.g)}" aria-label="Grammi"><small>g</small></div>
           <button class="del" data-delfil type="button" aria-label="Togli filamento" ${p.fil.length<2?'disabled':''}>×</button>
         </div>`).join('')}
@@ -298,6 +333,15 @@ function render3d(){
       ${timeHTML(p)}
       ${outHTML()}
     </section>`).join('');
+}
+// opzioni bobine; se il preventivo usa una bobina poi eliminata, la mostra comunque
+function filOptions(fid){
+  let opts = S.fil.map(f => `<option value="${f.id}" ${f.id===fid?'selected':''}>${esc(f.name)}</option>`).join('');
+  if (!S.fil.some(f => f.id === fid)) {
+    const old = snapFil(fid);
+    if (old) opts += `<option value="${old.id}" selected>${esc(old.name)} (eliminata)</option>`;
+  }
+  return opts;
 }
 function renderUv(){
   if (!platesUv.length) platesUv = [newUv()];
@@ -335,13 +379,10 @@ function bindPlates(){
     c.addEventListener('click', e => {
       const t = e.target.closest('button'); if (!t) return;
       const sec = t.closest('.plate'), list = sec.dataset.k === '3d' ? plates3d : platesUv, pi = +sec.dataset.pi;
-      if (t.hasAttribute('data-delplate')) {
-        list.splice(pi,1);
-      } else if (t.hasAttribute('data-addfil')) {
-        list[pi].fil.push({fid:S.fil[0].id, g:''});
-      } else if (t.hasAttribute('data-delfil')) {
-        list[pi].fil.splice(+t.closest('.frow').dataset.fi,1);
-      } else return;
+      if (t.hasAttribute('data-delplate')) list.splice(pi,1);
+      else if (t.hasAttribute('data-addfil')) list[pi].fil.push({fid:S.fil[0].id, g:''});
+      else if (t.hasAttribute('data-delfil')) list[pi].fil.splice(+t.closest('.frow').dataset.fi,1);
+      else return;
       sec.dataset.k === '3d' ? render3d() : renderUv();
       calc();
     });
@@ -413,16 +454,65 @@ function route(){
   document.querySelectorAll('.muv').forEach(el => el.hidden = !useUv);
   $('p3Title').textContent = mode === 'mix' ? 'Piatti stampa 3D' : 'Piatti';
   $('puvTitle').textContent = mode === 'mix' ? 'Piatti stampa UV' : 'Piatti';
+  if (!mode) renderQuoteList();
+  updateQuoteUI();
   window.scrollTo(0,0);
   calc();
 }
-document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => location.hash = b.dataset.go));
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
+  if (curQ) resetCalc();            // da un preventivo aperto: si riparte da zero
+  location.hash = b.dataset.go;
+}));
 $('backBtn').addEventListener('click', () => { if (history.length > 1 && location.hash) history.back(); else location.hash = ''; });
 window.addEventListener('hashchange', route);
 
 /* ================= CALCOLI ================= */
 const money = v => (S.currency || '£') + v.toFixed(v < 1 ? 3 : 2);
 const fmtTime = h => { const t = Math.round(h*60); return Math.floor(t/60) + 'h ' + String(t%60).padStart(2,'0') + 'm'; };
+function snapFil(fid){ const q = quotes.find(x => x.id === curQ); return q && q.snap ? (q.snap.fil || []).find(f => f.id === fid) : null; }
+
+// motore di calcolo: stesso progetto, prezzi passati in "set"
+function compute(set, md, p3, puv, extraFil){
+  const use3d = md === '3d' || md === 'mix', useUv = md === 'uv' || md === 'mix';
+  const tariff = num(set.kwhPrice);
+  const r = {inkCost:0, ml:0, uvElec:0, uvHours:0, filCost:0, grams:0, e3:0, h3:0,
+             inkBy:{C:0,M:0,Y:0,K:0,W:0,G:0}, missing:[], per3:[], perUv:[]};
+  if (useUv) {
+    const effMl = num(set.inkMl) * (1 - num(set.wastage)/100);
+    const perMl = id => effMl > 0 ? num(set.price[id]) / effMl : 0;
+    puv.forEach(p => {
+      let c = 0, pml = 0;
+      INKS.forEach(i => {
+        const u = num(p.u[i.id]); if (!(u > 0)) return;
+        if (!(perMl(i.id) > 0)) r.missing.push('"Prezzi e cartucce"');
+        c += u * perMl(i.id); pml += u; r.inkBy[i.id] += u * perMl(i.id);
+      });
+      const hrs = num(p.h) + num(p.m)/60;
+      const e = num(set.watt) / 1000 * hrs * tariff;
+      r.inkCost += c; r.ml += pml; r.uvElec += e; r.uvHours += hrs;
+      r.perUv.push({c, e, q:pml, hrs});
+    });
+  }
+  if (use3d) {
+    p3.forEach(p => {
+      let c = 0, pg = 0;
+      p.fil.forEach(u => {
+        const g = num(u.g); if (!(g > 0)) return;
+        const f = set.fil.find(x => x.id === u.fid) || (extraFil || []).find(x => x.id === u.fid) || set.fil[0];
+        const perG = num(f.weight) > 0 ? num(f.price) / num(f.weight) : 0;
+        if (!(perG > 0)) r.missing.push('"Filamenti"');
+        c += g * perG; pg += g;
+      });
+      const hrs = num(p.h) + num(p.m)/60;
+      const e = num(set.watt3d) / 1000 * hrs * tariff;
+      r.filCost += c; r.grams += pg; r.e3 += e; r.h3 += hrs;
+      r.per3.push({c, e, q:pg, hrs});
+    });
+  }
+  r.elec = r.uvElec + r.e3;
+  r.total = r.inkCost + r.filCost + r.elec;
+  return r;
+}
 function setOut(sec, cost, has, info, lbl){
   sec.querySelector('[data-o=cost]').textContent = has ? money(cost) : '--';
   sec.querySelector('[data-o=info]').textContent = info;
@@ -431,110 +521,170 @@ function setOut(sec, cost, has, info, lbl){
 function calc(){
   if (!mode) return;
   const use3d = mode === '3d' || mode === 'mix', useUv = mode === 'uv' || mode === 'mix';
-  const tariff = num(S.kwhPrice);
-  const missing = [];
+  const q = quotes.find(x => x.id === curQ);
+  const r = compute(S, mode, plates3d, platesUv, q && q.snap ? q.snap.fil : null);
 
-  // --- UV: inchiostro = ml × prezzo ÷ (ml cartuccia − spreco) ---
-  let inkCost = 0, ml = 0, uvElec = 0, uvHours = 0;
-  const inkBy = {C:0,M:0,Y:0,K:0,W:0,G:0};
-  const effMl = num(S.inkMl) * (1 - num(S.wastage)/100);
-  const perMl = id => effMl > 0 ? num(S.price[id]) / effMl : 0;
-  if (useUv) {
-    document.querySelectorAll('#platesUv .plate').forEach((sec, pi) => {
-      const p = platesUv[pi];
-      let c = 0, pml = 0;
-      INKS.forEach(i => {
-        const u = num(p.u[i.id]); if (!(u > 0)) return;
-        if (!(perMl(i.id) > 0)) missing.push('"Prezzi e cartucce"');
-        c += u * perMl(i.id); pml += u; inkBy[i.id] += u * perMl(i.id);
-      });
-      const hrs = num(p.h) + num(p.m)/60;
-      const e = num(S.watt) / 1000 * hrs * tariff;
-      inkCost += c; ml += pml; uvElec += e; uvHours += hrs;
-      setOut(sec, c + e, pml > 0 || hrs > 0, hrs > 0 ? money(e) : '--', pml > 0 ? 'elettricità · ' + pml.toFixed(2) + ' ml' : 'elettricità');
-    });
-  }
+  document.querySelectorAll('#plates3d .plate').forEach((sec, i) => { const p = r.per3[i]; if (p)
+    setOut(sec, p.c + p.e, p.q > 0 || p.hrs > 0, p.hrs > 0 ? money(p.e) : '--', p.q > 0 ? 'elettricità · ' + Math.round(p.q) + ' g' : 'elettricità'); });
+  document.querySelectorAll('#platesUv .plate').forEach((sec, i) => { const p = r.perUv[i]; if (p)
+    setOut(sec, p.c + p.e, p.q > 0 || p.hrs > 0, p.hrs > 0 ? money(p.e) : '--', p.q > 0 ? 'elettricità · ' + p.q.toFixed(2) + ' ml' : 'elettricità'); });
 
-  // --- 3D: filamento = grammi × prezzo bobina ÷ peso bobina ---
-  let filCost = 0, grams = 0, e3 = 0, h3 = 0;
-  if (use3d) {
-    document.querySelectorAll('#plates3d .plate').forEach((sec, pi) => {
-      const p = plates3d[pi];
-      let c = 0, pg = 0;
-      p.fil.forEach(u => {
-        const g = num(u.g); if (!(g > 0)) return;
-        const f = S.fil.find(x => x.id === u.fid) || S.fil[0];
-        const perG = num(f.weight) > 0 ? num(f.price) / num(f.weight) : 0;
-        if (!(perG > 0)) missing.push('"Filamenti"');
-        c += g * perG; pg += g;
-      });
-      const hrs = num(p.h) + num(p.m)/60;
-      const e = num(S.watt3d) / 1000 * hrs * tariff;
-      filCost += c; grams += pg; e3 += e; h3 += hrs;
-      setOut(sec, c + e, pg > 0 || hrs > 0, hrs > 0 ? money(e) : '--', pg > 0 ? 'elettricità · ' + Math.round(pg) + ' g' : 'elettricità');
-    });
-  }
-
-  const elec = uvElec + e3;
-  const total = inkCost + filCost + elec;
-  const has = total > 0 || ml > 0 || grams > 0;
-
-  // barra: composizione del costo
+  const has = r.total > 0 || r.ml > 0 || r.grams > 0;
   const parts = [];
-  if (use3d) parts.push([filCost,'#1F8A5B','Filamento']);
-  if (useUv) INKS.forEach(i => parts.push([inkBy[i.id], i.color, i.name]));
-  parts.push([elec,'#F5A623','Elettricità']);
-  $('stack').innerHTML = total > 0 ? parts.filter(p => p[0] > 0).map(p =>
-    `<span title="${p[2]}" style="width:${p[0]/total*100}%;background:${p[1]}"></span>`).join('') : '';
+  if (use3d) parts.push([r.filCost,'#1F8A5B','Filamento']);
+  if (useUv) INKS.forEach(i => parts.push([r.inkBy[i.id], i.color, i.name]));
+  parts.push([r.elec,'#F5A623','Elettricità']);
+  $('stack').innerHTML = r.total > 0 ? parts.filter(p => p[0] > 0).map(p =>
+    `<span title="${p[2]}" style="width:${p[0]/r.total*100}%;background:${p[1]}"></span>`).join('') : '';
 
-  $('rTotal').textContent = has ? money(total) : '--';
+  $('rTotal').textContent = has ? money(r.total) : '--';
   const bits = [];
-  if (use3d) bits.push('filamento ' + money(filCost));
-  if (useUv) bits.push('inchiostro ' + money(inkCost));
-  bits.push('elettricità ' + money(elec));
-  $('rTotalSub').textContent = missing.length
-    ? 'progetto — mancano alcuni prezzi in ' + [...new Set(missing)].join(' e ')
-    : 'progetto: ' + bits.join(' + ');
+  if (use3d) bits.push('filamento ' + money(r.filCost));
+  if (useUv) bits.push('inchiostro ' + money(r.inkCost));
+  bits.push('elettricità ' + money(r.elec));
+  $('rTotalSub').textContent = r.missing.length
+    ? 'progetto — mancano alcuni prezzi in ' + [...new Set(r.missing)].join(' e ')
+    : 'progetto, prezzi attuali: ' + bits.join(' + ');
 
-  // statistiche in alto
+  // preventivo aperto: stesso progetto con i prezzi del salvataggio
+  if (q && q.snap) {
+    const old = compute(q.snap, mode, plates3d, platesUv, S.fil);
+    const d = r.total - old.total;
+    const sign = Math.abs(d) < 0.0005 ? 'nessuna differenza' : 'differenza ' + (d > 0 ? '+' : '−') + money(Math.abs(d));
+    $('rSaved').textContent = 'Con i prezzi del ' + fmtDate(q.updated) + ': ' + money(old.total) + ' · ' + sign;
+    $('rSaved').hidden = false;
+  } else $('rSaved').hidden = true;
+
   const nPl = (use3d ? plates3d.length : 0) + (useUv ? platesUv.length : 0);
   const st = [];
-  if (use3d) st.push([grams > 0 ? Math.round(grams) + ' g' : '--', 'filamento']);
-  if (useUv) st.push([ml > 0 ? ml.toFixed(2) + ' ml' : '--', 'inchiostro']);
+  if (use3d) st.push([r.grams > 0 ? Math.round(r.grams) + ' g' : '--', 'filamento']);
+  if (useUv) st.push([r.ml > 0 ? r.ml.toFixed(2) + ' ml' : '--', 'inchiostro']);
   if (mode !== 'mix') st.push([nPl, nPl === 1 ? 'piatto' : 'piatti']);
-  st.push([(h3 + uvHours) > 0 ? fmtTime(h3 + uvHours) : '--', 'tempo totale']);
+  st.push([(r.h3 + r.uvHours) > 0 ? fmtTime(r.h3 + r.uvHours) : '--', 'tempo totale']);
   $('stats').className = 'stats' + (st.length === 3 ? ' three' : '');
   $('stats').innerHTML = st.map(s => `<div><b>${s[0]}</b>${s[1]}</div>`).join('');
 }
 
-/* ================= SALVATAGGIO ================= */
+/* ================= PREVENTIVI ================= */
+const snapshot = () => structuredClone({currency:S.currency, wastage:S.wastage, inkMl:S.inkMl, kwhPrice:S.kwhPrice,
+  watt:S.watt, watt3d:S.watt3d, price:S.price, fil:S.fil});
+const qid = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+function resetCalc(){
+  curQ = null; plates3d = []; platesUv = [];
+  $('qName').value = ''; $('qNote').value = ''; $('qMsg').textContent = '';
+  render3d(); renderUv();
+}
+function updateQuoteUI(){
+  const q = quotes.find(x => x.id === curQ);
+  $('qTag').hidden = !q; if (q) $('qTag').textContent = q.name;
+  $('qSave').textContent = q ? 'Aggiorna preventivo' : 'Salva preventivo';
+  $('qSaveNew').hidden = !q; $('qDelete').hidden = !q;
+}
+function saveQuote(asNew){
+  const name = $('qName').value.trim();
+  if (!name) { $('qMsg').textContent = 'Scrivi un nome per il preventivo.'; $('qName').focus(); return; }
+  const now = Date.now();
+  const old = !asNew && quotes.find(x => x.id === curQ);
+  const r = compute(S, mode, plates3d, platesUv);
+  const q = {
+    id: old ? old.id : qid(), name, note: $('qNote').value.trim(), mode,
+    created: old ? old.created : now, updated: now,
+    plates3d: (mode === 'uv') ? [] : structuredClone(plates3d),
+    platesUv: (mode === '3d') ? [] : structuredClone(platesUv),
+    snap: snapshot(), total: r.total
+  };
+  quotes = quotes.filter(x => x.id !== q.id); quotes.unshift(q);
+  lsSet(LS_Q, quotes);
+  curQ = q.id;
+  queue({op:'saveQuote', quote:q});
+  $('qMsg').textContent = (old ? 'Preventivo aggiornato' : 'Preventivo salvato') + (API_URL ? '.' : ' nel telefono.');
+  updateQuoteUI(); calc();
+}
+function openQuote(id){
+  const q = quotes.find(x => x.id === id); if (!q) return;
+  curQ = id;
+  plates3d = structuredClone(q.plates3d || []); platesUv = structuredClone(q.platesUv || []);
+  $('qName').value = q.name; $('qNote').value = q.note || ''; $('qMsg').textContent = '';
+  render3d(); renderUv();
+  if (location.hash === '#' + q.mode) route(); else location.hash = q.mode;
+}
+function deleteQuote(){
+  const q = quotes.find(x => x.id === curQ); if (!q) return;
+  if (!confirm('Eliminare il preventivo "' + q.name + '"?')) return;
+  quotes = quotes.filter(x => x.id !== q.id); lsSet(LS_Q, quotes);
+  queue({op:'deleteQuote', id:q.id});
+  resetCalc(); location.hash = '';
+}
+function renderQuoteList(){
+  if (!quotes.length) { $('quoteList').innerHTML = '<p class="qempty">Nessun preventivo salvato. Fai un calcolo e premi "Salva preventivo" in fondo.</p>'; return; }
+  $('quoteList').innerHTML = quotes.map(q => {
+    const now = compute(S, q.mode, q.plates3d || [], q.platesUv || [], q.snap ? q.snap.fil : null).total;
+    const diff = Math.abs(now - (q.total || 0)) >= 0.0005;
+    return `<button class="qitem" type="button" data-q="${q.id}">
+      <div class="top"><b>${esc(q.name)}</b><span class="tot">${money(now)}</span></div>
+      <div class="meta">${MODES[q.mode] ? MODES[q.mode].title : ''} · ${fmtDate(q.updated)}${diff ? ' · al salvataggio ' + money(q.total || 0) : ''}</div>
+    </button>`;
+  }).join('');
+}
+$('quoteList').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if (b) openQuote(b.dataset.q); });
+$('qSave').addEventListener('click', () => saveQuote(false));
+$('qSaveNew').addEventListener('click', () => saveQuote(true));
+$('qDelete').addEventListener('click', deleteQuote);
+$('qNewCalc').addEventListener('click', () => { resetCalc(); updateQuoteUI(); calc(); window.scrollTo(0,0); });
+
+/* ================= SALVATAGGIO E DRIVE ================= */
 let saveTimer = null;
 function setSync(txt, cls){ const el = $('sync'); el.textContent = txt; el.className = 'sync ' + (cls||''); }
+function getPin(){ try { return localStorage.getItem(LS_PIN) || ''; } catch(e){ return ''; } }
+async function api(body){
+  const r = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({pin:getPin(), ...body}) });
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.error || 'errore');
+  return d;
+}
 function changed(){
   calc();
-  try { localStorage.setItem(LS_SET, JSON.stringify(S)); } catch(e){}
+  lsSet(LS_SET, S);
   if (!API_URL) return;
   setSync('Modifiche da salvare…');
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveRemote, 1200);
+  saveTimer = setTimeout(() => queue({op:'saveSettings'}), 1200);
 }
-async function saveRemote(){
-  setSync('Salvataggio…');
+// coda: le operazioni restano in attesa se sei offline e partono appena possibile
+function queue(op){
+  if (!API_URL) return;
+  let pend = lsGet(LS_PEND, []);
+  if (op.op === 'saveSettings') pend = pend.filter(p => p.op !== 'saveSettings');
+  if (op.op === 'saveQuote' || op.op === 'deleteQuote') pend = pend.filter(p => !((p.op === 'saveQuote' && p.quote.id === (op.id || op.quote.id)) || (p.op === 'deleteQuote' && p.id === (op.id || op.quote.id))));
+  pend.push(op); lsSet(LS_PEND, pend);
+  flush();
+}
+let flushing = false;
+async function flush(){
+  if (!API_URL || flushing || !getPin()) return;
+  flushing = true;
+  let pend = lsGet(LS_PEND, []);
   try {
-    const r = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ pin: getPin(), settings: {...S, fil: JSON.stringify(S.fil)} }) });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || 'errore');
+    while (pend.length) {
+      setSync('Salvataggio…');
+      const p = pend[0];
+      if (p.op === 'saveSettings') await api({action:'saveSettings', settings:{...S, fil:JSON.stringify(S.fil)}});
+      else await api(p);
+      pend.shift(); lsSet(LS_PEND, pend);
+    }
     setSync('Salvato su Drive', 'ok');
-  } catch(e) { setSync('Non salvato su Drive: ' + e.message + '. Riprova modificando un campo.', 'err'); }
+  } catch(e) {
+    setSync('Non salvato su Drive (' + e.message + '): riprovo alla prossima modifica o apertura.', 'err');
+  }
+  flushing = false;
 }
 async function loadRemote(pin){
   const r = await fetch(API_URL + '?pin=' + encodeURIComponent(pin));
   const d = await r.json();
   if (!d.ok) throw new Error(d.error || 'errore');
-  return d.settings;
+  return d;
 }
-function getPin(){ try { return localStorage.getItem(LS_PIN) || ''; } catch(e){ return ''; } }
 function merge(src){
   const out = structuredClone(DEFAULTS);
   if (!src) return out;
@@ -545,18 +695,44 @@ function merge(src){
   if (Array.isArray(fil) && fil.length) out.fil = fil;
   return out;
 }
+// unisce i preventivi di Drive con quelli del telefono (vince il più recente)
+function mergeQuotes(remote){
+  const pend = lsGet(LS_PEND, []);
+  const pendIds = new Set(pend.map(p => p.op === 'saveQuote' ? p.quote.id : p.id));
+  const firstSync = !lsGet(LS_SYNCED, false);
+  const byId = new Map();
+  (remote || []).forEach(q => { if (!pend.some(p => p.op === 'deleteQuote' && p.id === q.id)) byId.set(q.id, q); });
+  quotes.forEach(q => {
+    const r = byId.get(q.id);
+    if (r) { if ((q.updated||0) > (r.updated||0)) byId.set(q.id, q); }
+    else if (pendIds.has(q.id) || firstSync) {
+      byId.set(q.id, q);
+      if (firstSync && !pendIds.has(q.id)) queue({op:'saveQuote', quote:q});
+    }
+  });
+  quotes = [...byId.values()].sort((a,b) => (b.updated||0) - (a.updated||0));
+  lsSet(LS_Q, quotes); lsSet(LS_SYNCED, true);
+}
+async function syncFromDrive(pin){
+  const d = await loadRemote(pin);
+  if (d.settings && Object.keys(d.settings).length) S = merge(d.settings);
+  else queue({op:'saveSettings'});   // Drive vuoto: carico le impostazioni del telefono
+  mergeQuotes(d.quotes);
+  fillSettings(); renderQuoteList(); calc();
+}
 
 /* ================= AVVIO ================= */
 async function start(){
   $('ver').textContent = APP_VERSION;
-  try { S = merge(JSON.parse(localStorage.getItem(LS_SET))); } catch(e){ S = merge(null); }
+  S = merge(lsGet(LS_SET, null));
+  quotes = lsGet(LS_Q, []);
   buildPriceRows(); bindPlates(); fillSettings(); bindSettings(); route();
 
   if (!API_URL) { setSync('Solo locale'); return; }
   const pin = getPin();
   if (!pin) return showLock();
   setSync('Caricamento…');
-  try { S = merge(await loadRemote(pin)); fillSettings(); calc(); setSync('Sincronizzato con Drive', 'ok'); }
+  try { await syncFromDrive(pin); setSync('Sincronizzato con Drive', 'ok'); flush(); }
   catch(e) {
     if (/pin/i.test(e.message)) { localStorage.removeItem(LS_PIN); showLock(); }
     else setSync('Offline: uso i dati salvati sul telefono', 'err');
@@ -569,10 +745,10 @@ function showLock(){
     const pin = $('pinInput').value.trim();
     $('lockMsg').textContent = 'Verifica…';
     try {
-      const remote = await loadRemote(pin);
+      await loadRemote(pin);
       localStorage.setItem(LS_PIN, pin);
-      S = merge(remote); fillSettings(); calc();
-      $('lock').hidden = true; setSync('Sincronizzato con Drive', 'ok');
+      await syncFromDrive(pin);
+      $('lock').hidden = true; setSync('Sincronizzato con Drive', 'ok'); flush();
     } catch(e) { $('lockMsg').textContent = /pin/i.test(e.message) ? 'PIN errato' : 'Server non raggiungibile: ' + e.message; }
   };
 }
